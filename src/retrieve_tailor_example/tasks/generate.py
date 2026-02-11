@@ -2,13 +2,18 @@
 
 import json
 import time
+import os
+import re
 from pathlib import Path
 
 from rich.console import Console
+from dotenv import load_dotenv
 
 from retrieve_tailor_example.agent import Agent
-from retrieve_tailor_example.document import resolve_article_text
+from retrieve_tailor_example.scraper import Scraper
+from retrieve_tailor_example.document import resolve_article_text, fetch_and_extract
 from retrieve_tailor_example.models import Article
+from retrieve_tailor_example.tasks.classify import classify_paper
 
 EXAMPLE_FILE = Path(__file__).parents[3] / "example.md"
 
@@ -67,6 +72,45 @@ def _format_metadata_block(article: Article) -> str:
     link = _best_link(article)
     lines.append(f"- Link: {link}" if link else "- Link: _No link available_")
     return "\n".join(lines)
+
+
+def _extract_metadata_from_generated_content(content: str) -> dict[str, str]:
+    """Extract title, authors, and other metadata from generated markdown frontmatter."""
+    # Extract YAML frontmatter
+    frontmatter_match = re.match(r"^---\n(.*?)\n---", content, re.DOTALL)
+    if not frontmatter_match:
+        return {}
+
+    frontmatter = frontmatter_match.group(1)
+    metadata = {}
+
+    # Extract title
+    title_match = re.search(r"title:\s*(.+)", frontmatter)
+    if title_match:
+        metadata["title"] = title_match.group(1).strip()
+
+    # Extract authors (handle both single and list format)
+    authors_match = re.search(r"authors:\s*\n((?:\s*-\s*.+\n)+)", frontmatter)
+    if authors_match:
+        authors_text = authors_match.group(1)
+        authors = [
+            line.strip().replace("- ", "")
+            for line in authors_text.split("\n")
+            if line.strip()
+        ]
+        metadata["authors"] = authors
+    else:
+        # Try single line format
+        authors_match = re.search(r"authors:\s*(.+)", frontmatter)
+        if authors_match:
+            metadata["authors"] = [authors_match.group(1).strip()]
+
+    # Extract date/venue info
+    date_match = re.search(r"date:\s*(.+)", frontmatter)
+    if date_match:
+        metadata["date"] = date_match.group(1).strip()
+
+    return metadata
 
 
 def generate_example(
@@ -155,3 +199,131 @@ def generate_all_examples(
         f"\nDone: {len(generated)}/{len(real_world)} examples in {output_dir}/"
     )
     return generated
+
+
+def generate_from_url(
+    url: str,
+    output_file: str,
+    agent: Agent,
+    scraper: Scraper,
+    force_generate: bool = True,
+) -> tuple[str, Article]:
+    """Generate an example from a single URL (PDF or paper page) by scraping, classifying, and generating."""
+    load_dotenv()
+
+    if os.environ.get("ANTHROPIC_API_KEY", None) is None:
+        raise RuntimeError("No ANTHROPIC_API_KEY was set.")
+
+    console = Console()
+
+    output_path = Path(output_file)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Step 1: Get the paper text
+    console.print(f"📥 Fetching content from: {url}")
+    try:
+        if url.lower().endswith(".pdf"):
+            # Direct PDF URL
+            with console.status("Downloading and extracting PDF text..."):
+                text = fetch_and_extract(url)
+
+            # Create a basic Article object for a direct PDF
+            article = Article(
+                title="Unknown Title",  # Will be updated if we can extract it
+                authors=["Unknown Author"],
+                venue="Unknown Venue",
+                pdf_url=url,
+                links={"PDF": url},
+            )
+            console.print("✅ PDF text extracted successfully")
+        else:
+            # Try to scrape the page for article metadata
+            with console.status("Scraping page for article metadata..."):
+                articles = scraper.scrape()
+
+            if not articles:
+                console.print(
+                    "❌ No articles found on the page. Trying to treat as direct PDF link..."
+                )
+                try:
+                    text = fetch_and_extract(url)
+                    article = Article(
+                        title="Unknown Title",
+                        authors=["Unknown Author"],
+                        venue="Unknown Venue",
+                        pdf_url=url,
+                        links={"PDF": url},
+                    )
+                    console.print("✅ Treated as direct PDF and extracted text")
+                except Exception as e:
+                    console.print(f"❌ Failed to extract content: {e}")
+                    raise e
+            else:
+                console.print(f"✅ Found {len(articles)} article(s) on the page")
+
+                # Use the first article found
+                article = articles[0]
+                console.print(f"📄 Processing: {article.title[:80]}...")
+
+                # Get the paper text
+                try:
+                    if article.pdf_url:
+                        with console.status("Downloading and extracting PDF..."):
+                            text = fetch_and_extract(article.pdf_url)
+                        console.print("✅ PDF text extracted successfully")
+                    else:
+                        console.print("❌ No PDF URL found in scraped article")
+                        raise RuntimeError("No PDF URL found in scraped article")
+                except Exception as e:
+                    console.print(f"❌ Failed to extract PDF text: {e}")
+                    raise e
+
+        # Step 2: Classify the paper (unless forced)
+        if not force_generate:
+            console.print("🔍 Classifying paper...")
+            with console.status(
+                "Determining if this is a real-world application paper..."
+            ):
+                classification = classify_paper(text, agent)
+
+            if classification["is_real_world_application"]:
+                console.print(f"✅ Real-world application: {classification['reason']}")
+            else:
+                console.print(
+                    f"❌ Not a real-world application: {classification['reason']}"
+                )
+                console.print("Use --force to generate example anyway.")
+                raise RuntimeError(
+                    "The paper provided is not a real-world application."
+                )
+        else:
+            console.print("⚡ Skipping classification (forced generation)")
+
+        # Step 3: Generate the example
+        console.print("🤖 Generating example...")
+        with console.status("Creating structured example summary..."):
+            result = generate_example(article, text, paper_id=1, agent=agent)
+
+        # Step 4: Save the result
+        output_path.write_text(result, encoding="utf-8")
+        console.print(f"✅ Example saved to: {output_path}")
+
+        # Extract real metadata from generated content for summary
+        generated_metadata = _extract_metadata_from_generated_content(result)
+
+        console.print("\n📊 Summary:")
+        title = generated_metadata.get("title", article.title)
+        authors = generated_metadata.get("authors", article.authors)
+        console.print(f"  • Title: {title}")
+        console.print(f"  • Authors: {', '.join(authors)}")
+        if article.venue != "Unknown Venue":
+            console.print(f"  • Venue: {article.venue}")
+        if "date" in generated_metadata:
+            console.print(f"  • Date: {generated_metadata['date']}")
+        console.print(f"  • Output: {output_path}")
+
+    except Exception as e:
+        console.print(f"❌ Error: {e}")
+        raise e
+
+    return text, article

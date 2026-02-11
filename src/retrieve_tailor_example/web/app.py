@@ -1,6 +1,5 @@
 """FastAPI web application for the retrieve-tailor-example tool."""
 
-import re
 from pathlib import Path
 
 import uvicorn
@@ -11,49 +10,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from retrieve_tailor_example.agents.anthropic import AnthropicAgent, DEFAULT_MODEL
-from retrieve_tailor_example.document import fetch_and_extract
-from retrieve_tailor_example.models import Article
 from retrieve_tailor_example.scrapers.acrocon import AcroconScraper
-from retrieve_tailor_example.tasks.generate import generate_example
-
-
-def _extract_metadata_from_generated_content(content: str) -> dict[str, str]:
-    """Extract title, authors, and other metadata from generated markdown frontmatter."""
-    # Extract YAML frontmatter
-    frontmatter_match = re.match(r"^---\n(.*?)\n---", content, re.DOTALL)
-    if not frontmatter_match:
-        return {}
-
-    frontmatter = frontmatter_match.group(1)
-    metadata = {}
-
-    # Extract title
-    title_match = re.search(r"title:\s*(.+)", frontmatter)
-    if title_match:
-        metadata["title"] = title_match.group(1).strip()
-
-    # Extract authors (handle both single and list format)
-    authors_match = re.search(r"authors:\s*\n((?:\s*-\s*.+\n)+)", frontmatter)
-    if authors_match:
-        authors_text = authors_match.group(1)
-        authors = [
-            line.strip().replace("- ", "")
-            for line in authors_text.split("\n")
-            if line.strip()
-        ]
-        metadata["authors"] = authors
-    else:
-        # Try single line format
-        authors_match = re.search(r"authors:\s*(.+)", frontmatter)
-        if authors_match:
-            metadata["authors"] = [authors_match.group(1).strip()]
-
-    # Extract date/venue info
-    date_match = re.search(r"date:\s*(.+)", frontmatter)
-    if date_match:
-        metadata["date"] = date_match.group(1).strip()
-
-    return metadata
+from retrieve_tailor_example.tasks.generate import generate_from_url
 
 
 load_dotenv()
@@ -81,71 +39,50 @@ async def home(request: Request):
 
 
 @app.post("/generate")
-async def generate_from_url(
+async def generate_from_url_endpoint(
     request: Request,
     url: str = Form(..., description="URL of the PDF or paper to process"),
     model: str = Form(DEFAULT_MODEL, description="Model to use for generation"),
+    force_generate: bool = Form(
+        True, description="Force generation without classification"
+    ),
 ):
     """Generate an example from a single URL."""
+    import tempfile
 
     try:
         agent = AnthropicAgent(model=model)
+        scraper = AcroconScraper(url=url)
 
-        # Step 1: Get the paper text
-        if url.lower().endswith(".pdf"):
-            # Direct PDF URL
-            text = fetch_and_extract(url)
+        # Create a temporary file to save the result
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".md", delete=False
+        ) as tmp_file:
+            temp_path = tmp_file.name
 
-            # Create a basic Article object for a direct PDF
-            article = Article(
-                title="Unknown Title",  # Will be updated if we can extract it
-                authors=["Unknown Author"],
-                venue="Unknown Venue",
-                pdf_url=url,
-                links={"PDF": url},
-            )
-        else:
-            # Try to scrape the page for article metadata
-            scraper = AcroconScraper(url=url)
-            articles = scraper.scrape()
+        # Use the shared generate_from_url function
+        text, article = generate_from_url(
+            url=url,
+            output_file=temp_path,
+            agent=agent,
+            scraper=scraper,
+            force_generate=force_generate,
+        )
 
-            if not articles:
-                # Try to treat as direct PDF link
-                try:
-                    text = fetch_and_extract(url)
-                    article = Article(
-                        title="Unknown Title",
-                        authors=["Unknown Author"],
-                        venue="Unknown Venue",
-                        pdf_url=url,
-                        links={"PDF": url},
-                    )
-                except Exception as e:
-                    raise HTTPException(
-                        status_code=400, detail=f"Failed to extract content: {e}"
-                    )
-            else:
-                # Use the first article found
-                article = articles[0]
+        # Read the generated content
+        with open(temp_path, "r", encoding="utf-8") as f:
+            result = f.read()
 
-                # Get the paper text
-                try:
-                    if article.pdf_url:
-                        text = fetch_and_extract(article.pdf_url)
-                    else:
-                        raise HTTPException(
-                            status_code=400,
-                            detail="No PDF URL found in scraped article",
-                        )
-                except Exception as e:
-                    raise HTTPException(
-                        status_code=400, detail=f"Failed to extract PDF text: {e}"
-                    )
+        # Clean up temp file
+        import os
 
-        # Step 2: Generate the example
-        result = generate_example(article, text, paper_id=1, agent=agent)
+        os.unlink(temp_path)
 
         # Extract metadata from generated content for summary
+        from retrieve_tailor_example.tasks.generate import (
+            _extract_metadata_from_generated_content,
+        )
+
         generated_metadata = _extract_metadata_from_generated_content(result)
 
         title = generated_metadata.get("title", article.title)
