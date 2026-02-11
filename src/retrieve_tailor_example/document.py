@@ -6,8 +6,11 @@ from pathlib import Path
 
 import pymupdf
 import requests
+from rich.console import Console
 
 from retrieve_tailor_example.models import Article
+
+console = Console()
 
 
 def slugify(text: str) -> str:
@@ -42,17 +45,20 @@ def download_pdf(url: str, output_dir: Path) -> Path | None:
     output_path = output_dir / filename
 
     if output_path.exists():
-        print(f"  Skipping (exists): {filename}")
+        console.print(f"  Skipping (exists): {filename}")
         return output_path
 
     try:
-        response = requests.get(url, timeout=30)
-        response.raise_for_status()
-        output_path.write_bytes(response.content)
-        print(f"  Downloaded: {filename} ({len(response.content) / 1024:.1f} KB)")
+        with console.status(f"  Downloading: {filename}..."):
+            response = requests.get(url, timeout=30)
+            response.raise_for_status()
+            output_path.write_bytes(response.content)
+        console.print(
+            f"  Downloaded: {filename} ({len(response.content) / 1024:.1f} KB)"
+        )
         return output_path
     except requests.RequestException as e:
-        print(f"  Failed: {filename} ({e})")
+        console.print(f"  Failed: {filename} ({e})")
         return None
 
 
@@ -78,29 +84,32 @@ def convert_all_pdfs(
 
     pdf_files = sorted(input_dir.glob("*.pdf"))
     if not pdf_files:
-        print(f"No PDFs found in {input_dir}/")
+        console.print(f"No PDFs found in {input_dir}/")
         return []
 
-    print(f"Found {len(pdf_files)} PDFs in {input_dir}/\n")
+    console.print(f"Found {len(pdf_files)} PDFs in {input_dir}/\n")
 
     converted: list[Path] = []
     for i, pdf_path in enumerate(pdf_files, 1):
         md_path = output_dir / f"{pdf_path.stem}.md"
 
         if md_path.exists():
-            print(f"[{i}/{len(pdf_files)}] Skipping (exists): {md_path.name}")
+            console.print(f"[{i}/{len(pdf_files)}] Skipping (exists): {md_path.name}")
             converted.append(md_path)
             continue
 
         try:
-            text = extract_text_from_pdf(pdf_path)
-            md_path.write_text(text, encoding="utf-8")
-            print(
+            with console.status(
+                f"[{i}/{len(pdf_files)}] Converting: {pdf_path.name}..."
+            ):
+                text = extract_text_from_pdf(pdf_path)
+                md_path.write_text(text, encoding="utf-8")
+            console.print(
                 f"[{i}/{len(pdf_files)}] Converted: {pdf_path.name} -> {md_path.name} ({len(text)} chars)"
             )
             converted.append(md_path)
         except Exception as e:
-            print(f"[{i}/{len(pdf_files)}] Failed: {pdf_path.name} ({e})")
+            console.print(f"[{i}/{len(pdf_files)}] Failed: {pdf_path.name} ({e})")
 
-    print(f"\nDone: {len(converted)}/{len(pdf_files)} files in {output_dir}/")
+    console.print(f"\nDone: {len(converted)}/{len(pdf_files)} files in {output_dir}/")
     return converted

@@ -1,29 +1,65 @@
 """Unified CLI with subcommands: scrape, convert, classify, generate."""
 
-import argparse
 import time
 from pathlib import Path
+from typing import Annotated
 
+import typer
 from dotenv import load_dotenv
 
 from retrieve_tailor_example.agents.anthropic import AnthropicAgent, DEFAULT_MODEL
-from retrieve_tailor_example.document import convert_all_pdfs, download_pdf, slugify
+from rich.console import Console
+
+from retrieve_tailor_example.document import (
+    convert_all_pdfs,
+    download_pdf,
+    resolve_article_text,
+    slugify,
+)
+from retrieve_tailor_example.models import Article
 from retrieve_tailor_example.scrapers.acrocon import AcroconScraper
 from retrieve_tailor_example.tasks.classify import classify_all_papers
-from retrieve_tailor_example.tasks.generate import generate_all_examples
+from retrieve_tailor_example.tasks.generate import (
+    generate_all_examples,
+    generate_example,
+)
+
+app = typer.Typer(
+    name="retrieve-tailor-example",
+    help="Scrape, convert, classify, and generate example summaries for publications.",
+)
 
 
-def cmd_scrape(args: argparse.Namespace) -> None:
+@app.command()
+def scrape(
+    url: Annotated[
+        str,
+        typer.Option(help="Publications page URL"),
+    ] = "https://www.acrocon.com/~wagner/publications.html",
+    pdf_dir: Annotated[
+        str,
+        typer.Option(help="Directory to save PDFs"),
+    ] = "pdfs",
+    articles_dir: Annotated[
+        str,
+        typer.Option(help="Directory to save article JSONs"),
+    ] = "articles",
+    delay: Annotated[
+        float,
+        typer.Option(help="Delay between downloads in seconds"),
+    ] = 0.5,
+) -> None:
     """Scrape articles, download PDFs, and save article JSONs."""
-    pdf_dir = Path(args.pdf_dir)
-    articles_dir = Path(args.articles_dir)
-    pdf_dir.mkdir(parents=True, exist_ok=True)
-    articles_dir.mkdir(parents=True, exist_ok=True)
+    pdf_path = Path(pdf_dir)
+    articles_path = Path(articles_dir)
+    pdf_path.mkdir(parents=True, exist_ok=True)
+    articles_path.mkdir(parents=True, exist_ok=True)
 
-    scraper = AcroconScraper(url=args.url)
-    print(f"Scraping articles from {args.url}...")
-    articles = scraper.scrape()
-    print(f"Found {len(articles)} articles.\n")
+    console = Console()
+    scraper = AcroconScraper(url=url)
+    with console.status(f"Scraping articles from {url}..."):
+        articles = scraper.scrape()
+    console.print(f"Found {len(articles)} articles.\n")
 
     downloaded = 0
     for i, article in enumerate(articles, 1):
@@ -32,162 +68,139 @@ def cmd_scrape(args: argparse.Namespace) -> None:
         else:
             stem = slugify(article.title)
 
-        json_path = articles_dir / f"{stem}.json"
+        json_path = articles_path / f"{stem}.json"
         if not json_path.exists():
             article.save(json_path)
 
         if article.pdf_url:
-            print(f"[{i}/{len(articles)}] {article.title[:60]}...")
-            path = download_pdf(article.pdf_url, pdf_dir)
+            console.print(f"[{i}/{len(articles)}] {article.title[:60]}...")
+            path = download_pdf(article.pdf_url, pdf_path)
             if path is not None:
                 downloaded += 1
             if i < len(articles):
-                time.sleep(args.delay)
+                time.sleep(delay)
 
-    print(
-        f"\nDone: {downloaded} PDFs downloaded, {len(articles)} article JSONs in {articles_dir}/"
+    console.print(
+        f"\nDone: {downloaded} PDFs downloaded, {len(articles)} article JSONs in {articles_path}/"
     )
 
 
-def cmd_convert(args: argparse.Namespace) -> None:
+@app.command()
+def convert(
+    input_dir: Annotated[
+        str,
+        typer.Option("-i", "--input-dir", help="Directory with PDFs"),
+    ] = "pdfs",
+    output_dir: Annotated[
+        str,
+        typer.Option("-o", "--output-dir", help="Output directory"),
+    ] = "pdfs_as_md",
+) -> None:
     """Convert all PDFs in a directory to .md text files."""
-    convert_all_pdfs(input_dir=args.input_dir, output_dir=args.output_dir)
+    convert_all_pdfs(input_dir=input_dir, output_dir=output_dir)
 
 
-def cmd_classify(args: argparse.Namespace) -> None:
+@app.command()
+def classify(
+    input_dir: Annotated[
+        str,
+        typer.Option("-i", "--input-dir", help="Directory with .md files"),
+    ] = "pdfs_as_md",
+    output: Annotated[
+        str,
+        typer.Option("-o", "--output", help="Output JSON path"),
+    ] = "real_world_papers.json",
+    model: Annotated[
+        str,
+        typer.Option(help="Model to use"),
+    ] = "claude-haiku-4-5-20251001",
+    delay: Annotated[
+        float,
+        typer.Option(help="Delay between API calls in seconds"),
+    ] = 0.2,
+) -> None:
     """Classify papers as real-world application papers or not."""
     load_dotenv()
-    agent = AnthropicAgent(model=args.model)
+    agent = AnthropicAgent(model=model)
     classify_all_papers(
-        md_dir=args.input_dir,
+        md_dir=input_dir,
         agent=agent,
-        output_path=args.output,
-        delay=args.delay,
+        output_path=output,
+        delay=delay,
     )
 
 
-def cmd_generate(args: argparse.Namespace) -> None:
+@app.command()
+def generate(
+    article_path: Annotated[
+        str | None,
+        typer.Option(
+            "-p",
+            "--article-path",
+            help="Path to a single article JSON (overrides --articles-dir and --classifications)",
+        ),
+    ] = None,
+    articles_dir: Annotated[
+        str,
+        typer.Option(
+            "-a", "--articles-dir", help="Directory with article JSON metadata"
+        ),
+    ] = "articles",
+    classifications: Annotated[
+        str,
+        typer.Option("-c", "--classifications", help="Path to classifications JSON"),
+    ] = "ignore_me/real_world_papers.json",
+    md_dir: Annotated[
+        str,
+        typer.Option(
+            "-m", "--md-dir", help="Directory with pre-converted .md paper texts"
+        ),
+    ] = "pdfs_as_md",
+    output_dir: Annotated[
+        str,
+        typer.Option("-o", "--output-dir", help="Output directory for examples"),
+    ] = "examples",
+    model: Annotated[
+        str,
+        typer.Option(help=f"Model to use (default: {DEFAULT_MODEL})"),
+    ] = DEFAULT_MODEL,
+    delay: Annotated[
+        float,
+        typer.Option(help="Delay between API calls in seconds"),
+    ] = 1.0,
+) -> None:
     """Generate example summaries for real-world application papers."""
     load_dotenv()
-    agent = AnthropicAgent(model=args.model)
-    generate_all_examples(
-        articles_dir=args.articles_dir,
-        classifications_path=args.classifications,
-        md_dir=args.md_dir,
-        output_dir=args.output_dir,
-        agent=agent,
-        delay=args.delay,
-    )
+    agent = AnthropicAgent(model=model)
+
+    if article_path is not None:
+        article_file = Path(article_path)
+        if not article_file.exists():
+            print(f"Error: article not found: {article_path}")
+            raise typer.Exit(code=1)
+
+        md_dir_path = Path(md_dir)
+        out_dir = Path(output_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        console = Console()
+        article = Article.load(article_file)
+        text = resolve_article_text(article, md_dir_path)
+        with console.status(f"Generating example for: {article.title[:80]}..."):
+            result = generate_example(article, text, paper_id=1, agent=agent)
+        output_path = out_dir / f"{article_file.stem}.md"
+        output_path.write_text(result, encoding="utf-8")
+        console.print(f"Saved to {output_path}")
+    else:
+        generate_all_examples(
+            articles_dir=articles_dir,
+            classifications_path=classifications,
+            md_dir=md_dir,
+            output_dir=output_dir,
+            agent=agent,
+            delay=delay,
+        )
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        prog="retrieve-tailor-example",
-        description="Scrape, convert, classify, and generate example summaries for publications.",
-    )
-    subparsers = parser.add_subparsers(dest="command", required=True)
-
-    # --- scrape ---
-    p_scrape = subparsers.add_parser(
-        "scrape", help="Scrape articles and download PDFs."
-    )
-    p_scrape.add_argument(
-        "--url",
-        default="https://www.acrocon.com/~wagner/publications.html",
-        help="Publications page URL",
-    )
-    p_scrape.add_argument(
-        "--pdf-dir", default="pdfs", help="Directory to save PDFs (default: pdfs/)"
-    )
-    p_scrape.add_argument(
-        "--articles-dir",
-        default="articles",
-        help="Directory to save article JSONs (default: articles/)",
-    )
-    p_scrape.add_argument(
-        "--delay",
-        type=float,
-        default=0.5,
-        help="Delay between downloads in seconds (default: 0.5)",
-    )
-    p_scrape.set_defaults(func=cmd_scrape)
-
-    # --- convert ---
-    p_convert = subparsers.add_parser("convert", help="Convert PDFs to .md text files.")
-    p_convert.add_argument(
-        "-i", "--input-dir", default="pdfs", help="Directory with PDFs (default: pdfs/)"
-    )
-    p_convert.add_argument(
-        "-o",
-        "--output-dir",
-        default="pdfs_as_md",
-        help="Output directory (default: pdfs_as_md/)",
-    )
-    p_convert.set_defaults(func=cmd_convert)
-
-    # --- classify ---
-    p_classify = subparsers.add_parser(
-        "classify", help="Classify papers as real-world application papers."
-    )
-    p_classify.add_argument(
-        "-i",
-        "--input-dir",
-        default="pdfs_as_md",
-        help="Directory with .md files (default: pdfs_as_md/)",
-    )
-    p_classify.add_argument(
-        "-o",
-        "--output",
-        default="real_world_papers.json",
-        help="Output JSON path (default: real_world_papers.json)",
-    )
-    p_classify.add_argument(
-        "--model",
-        default="claude-haiku-4-5-20251001",
-        help="Model to use (default: claude-haiku-4-5-20251001)",
-    )
-    p_classify.add_argument(
-        "--delay",
-        type=float,
-        default=0.2,
-        help="Delay between API calls in seconds (default: 0.2)",
-    )
-    p_classify.set_defaults(func=cmd_classify)
-
-    # --- generate ---
-    p_generate = subparsers.add_parser(
-        "generate", help="Generate example summaries for real-world papers."
-    )
-    p_generate.add_argument(
-        "-a",
-        "--articles-dir",
-        default="articles",
-        help="Directory with article JSON metadata",
-    )
-    p_generate.add_argument(
-        "-c",
-        "--classifications",
-        default="ignore_me/real_world_papers.json",
-        help="Path to classifications JSON",
-    )
-    p_generate.add_argument(
-        "-m",
-        "--md-dir",
-        default="pdfs_as_md",
-        help="Directory with pre-converted .md paper texts",
-    )
-    p_generate.add_argument(
-        "-o", "--output-dir", default="examples", help="Output directory for examples"
-    )
-    p_generate.add_argument(
-        "--model",
-        default=DEFAULT_MODEL,
-        help=f"Model to use (default: {DEFAULT_MODEL})",
-    )
-    p_generate.add_argument(
-        "--delay", type=float, default=1.0, help="Delay between API calls in seconds"
-    )
-    p_generate.set_defaults(func=cmd_generate)
-
-    args = parser.parse_args()
-    args.func(args)
+    app()

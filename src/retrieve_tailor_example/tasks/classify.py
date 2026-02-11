@@ -4,7 +4,11 @@ import json
 import time
 from pathlib import Path
 
+from rich.console import Console
+
 from retrieve_tailor_example.agent import Agent
+
+console = Console()
 
 CLASSIFICATION_PROMPT = """\
 Is this paper primarily about a real-world application (e.g. engineering, \
@@ -73,20 +77,24 @@ def classify_all_papers(
     output_path = Path(output_path)
     md_files = sorted(md_dir.glob("*.md"))
 
-    print(f"Found {len(md_files)} .md files in {md_dir}/\n")
+    console.print(f"Found {len(md_files)} .md files in {md_dir}/\n")
 
     results: list[dict] = []
     for i, md_path in enumerate(md_files, 1):
-        print(f"[{i}/{len(md_files)}] {md_path.name}...", end=" ", flush=True)
         try:
             text = md_path.read_text(encoding="utf-8")
-            result = classify_paper(text, agent)
+            with console.status(
+                f"[{i}/{len(md_files)}] Classifying: {md_path.name}..."
+            ):
+                result = classify_paper(text, agent)
             result["file"] = md_path.name
             tag = "YES" if result["is_real_world_application"] else "no"
-            print(f"{tag} — {result['reason']}")
+            console.print(
+                f"[{i}/{len(md_files)}] {md_path.name}: {tag} — {result['reason']}"
+            )
             results.append(result)
         except Exception as e:
-            print(f"ERROR: {e}")
+            console.print(f"[{i}/{len(md_files)}] {md_path.name}: ERROR: {e}")
             results.append(
                 {
                     "file": md_path.name,
@@ -101,12 +109,12 @@ def classify_all_papers(
     output_path.write_text(json.dumps(results, indent=2), encoding="utf-8")
 
     real_world = [r for r in results if r["is_real_world_application"]]
-    print(f"\n{'=' * 60}")
-    print(f"Total papers: {len(results)}")
-    print(f"Real-world application papers: {len(real_world)}")
-    print(f"\nResults saved to {output_path}")
-    print("\nReal-world application papers:")
+    console.print(f"\n{'=' * 60}")
+    console.print(f"Total papers: {len(results)}")
+    console.print(f"Real-world application papers: {len(real_world)}")
+    console.print(f"\nResults saved to {output_path}")
+    console.print("\nReal-world application papers:")
     for r in real_world:
-        print(f"  - {r['file']}: {r['reason']}")
+        console.print(f"  - {r['file']}: {r['reason']}")
 
     return results

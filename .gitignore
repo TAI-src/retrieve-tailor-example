@@ -17,3 +17,5 @@ pdfs/
 examples/
 articles/
 pdfs_as_md/
+
+.DS_Store
