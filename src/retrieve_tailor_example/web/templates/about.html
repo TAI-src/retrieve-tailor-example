@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+
+{% block title %}About - Retrieve Tailor Example Tool{% endblock %}
+
+{% block content %}
+<div class="hero-section">
+    <div class="container">
+        <div class="row">
+            <div class="col-lg-8 mx-auto text-center">
+                <h1 class="display-4 fw-bold mb-4">About This Tool</h1>
+                <p class="lead">Learn how the Retrieve Tailor Example Tool transforms academic papers into structured examples.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container py-5">
+    <div class="row">
+        <div class="col-lg-10 mx-auto">
+            <div class="row g-5">
+                <div class="col-md-6">
+                    <h3>What It Does</h3>
+                    <p>This tool extracts content from academic papers (PDFs or paper pages) and transforms them into structured examples following a specific format designed for algorithm tailoring case studies.</p>
+                    
+                    <h4>Key Features:</h4>
+                    <ul>
+                        <li><strong>Automatic Content Extraction:</strong> Fetches and processes PDF content from URLs</li>
+                        <li><strong>Structured Generation:</strong> Creates consistent, formatted examples</li>
+                        <li><strong>Multiple AI Models:</strong> Choose between speed and quality</li>
+                        <li><strong>Easy Interface:</strong> Simple form-based input with real-time processing</li>
+                    </ul>
+                </div>
+                
+                <div class="col-md-6">
+                    <h3>How It Works</h3>
+                    <div class="timeline">
+                        <div class="d-flex mb-4">
+                            <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 40px; height: 40px; min-width: 40px;">
+                                <span class="fw-bold">1</span>
+                            </div>
+                            <div>
+                                <h5>Content Extraction</h5>
+                                <p>The tool fetches the PDF from the provided URL and extracts the text content using PyMuPDF.</p>
+                            </div>
+                        </div>
+                        
+                        <div class="d-flex mb-4">
+                            <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 40px; height: 40px; min-width: 40px;">
+                                <span class="fw-bold">2</span>
+                            </div>
+                            <div>
+                                <h5>Example Generation</h5>
+                                <p>The AI generates a structured summary following our specific template format.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <hr class="my-5">
+
+            <div class="row">
+                <div class="col-12">
+                    <h3>Output Format</h3>
+                    <p>The generated examples follow a structured format with the following sections:</p>
+                    
+                    <div class="row g-4">
+                        <div class="col-md-6">
+                            <div class="card h-100">
+                                <div class="card-body">
+                                    <h5 class="card-title">📝 YAML Frontmatter</h5>
+                                    <p class="card-text">Contains metadata including title, authors, date, and links.</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="card h-100">
+                                <div class="card-body">
+                                    <h5 class="card-title">🎯 Problem Description</h5>
+                                    <p class="card-text">Explains the application context and the problem being solved.</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="card h-100">
+                                <div class="card-body">
+                                    <h5 class="card-title">🔧 Tailoring Process</h5>
+                                    <p class="card-text">Describes why tailoring was needed and the baseline algorithm used.</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="card h-100">
+                                <div class="card-body">
+                                    <h5 class="card-title">🏷️ Problem Characteristics</h5>
+                                    <p class="card-text">Lists key characteristics and provides relevant keywords.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <hr class="my-5">
+
+            <div class="row">
+                <div class="col-12">
+                    <h3>AI Models</h3>
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Model</th>
+                                    <th>Best For</th>
+                                    <th>Speed</th>
+                                    <th>Quality</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Claude Sonnet 4.5</td>
+                                    <td>High-quality, detailed analysis</td>
+                                    <td>⭐⭐⭐</td>
+                                    <td>⭐⭐⭐⭐⭐</td>
+                                </tr>
+                                <tr>
+                                    <td>Claude Haiku 3.5</td>
+                                    <td>Fast processing, good quality</td>
+                                    <td>⭐⭐⭐⭐⭐</td>
+                                    <td>⭐⭐⭐⭐</td>
+                                </tr>
+                                <tr>
+                                    <td>Claude Haiku 4.5</td>
+                                    <td>Latest features, balanced performance</td>
+                                    <td>⭐⭐⭐⭐</td>
+                                    <td>⭐⭐⭐⭐⭐</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <hr class="my-5">
+
+            <div class="row">
+                <div class="col-12">
+                    <h3>Supported Input Types</h3>
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <div class="d-flex align-items-center">
+                                <div class="bg-success text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 40px; height: 40px; min-width: 40px;">
+                                    ✓
+                                </div>
+                                <div>
+                                    <strong>Direct PDF URLs</strong><br>
+                                    <small class="text-muted">e.g., arxiv.org/pdf/...</small>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <div class="d-flex align-items-center">
+                                <div class="bg-success text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 40px; height: 40px; min-width: 40px;">
+                                    ✓
+                                </div>
+                                <div>
+                                    <strong>Academic Paper Pages</strong><br>
+                                    <small class="text-muted">Pages with paper metadata</small>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <div class="d-flex align-items-center">
+                                <div class="bg-success text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 40px; height: 40px; min-width: 40px;">
+                                    ✓
+                                </div>
+                                <div>
+                                    <strong>All Paper Types</strong><br>
+                                    <small class="text-muted">Any academic paper or PDF</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="text-center mt-5">
+                <a href="/" class="btn btn-primary btn-lg">🚀 Try It Now</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

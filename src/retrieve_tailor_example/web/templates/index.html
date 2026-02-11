@@ -1,0 +1,291 @@
+{% extends "base.html" %}
+
+{% block title %}Generate Example - Retrieve Tailor Example Tool{% endblock %}
+
+{% block content %}
+<div class="hero-section">
+    <div class="container">
+        <div class="row">
+            <div class="col-lg-8 mx-auto text-center">
+                <h1 class="display-4 fw-bold mb-4">Transform Papers into Structured Examples</h1>
+                <p class="lead mb-4">Enter a URL to a PDF paper or academic article, and we'll generate a structured example following our tailored format.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="form-section">
+    <div class="container">
+        <div class="row">
+            <div class="col-lg-8 mx-auto">
+                <div class="card shadow">
+                    <div class="card-body p-4">
+                        <h2 class="card-title h4 mb-4">Generate from URL</h2>
+                        
+                        <form id="generateForm">
+                            <div class="mb-3">
+                                <label for="url" class="form-label">Paper URL *</label>
+                                <input 
+                                    type="url" 
+                                    class="form-control" 
+                                    id="url" 
+                                    name="url" 
+                                    placeholder="https://arxiv.org/pdf/2105.08484.pdf" 
+                                    required
+                                >
+                                <div class="form-text">Enter the URL to a PDF paper or a page containing paper metadata.</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="model" class="form-label">AI Model</label>
+                                <select class="form-select" id="model" name="model">
+                                    <option value="claude-sonnet-4-5-20250929" selected>Claude Sonnet 4.5 (Latest)</option>
+                                    <option value="claude-haiku-3-5-20241022">Claude Haiku 3.5 (Faster)</option>
+                                    <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5</option>
+                                </select>
+                                <div class="form-text">Choose the AI model for content generation. Sonnet provides higher quality, Haiku is faster.</div>
+                            </div>
+
+                            <button type="submit" class="btn btn-primary btn-lg w-100">
+                                <span class="button-text">🚀 Generate Example</span>
+                                <span class="loading-spinner spinner-border spinner-border-sm ms-2" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </span>
+                            </button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Loading State -->
+                <div class="alert alert-info mt-4" id="loadingAlert" style="display: none;">
+                    <div class="d-flex align-items-center">
+                        <div class="spinner-border spinner-border-sm me-3" role="status"></div>
+                        <div>
+                            <strong>Processing your request...</strong>
+                            <br>
+                            <small id="loadingStep">Fetching content from URL...</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Error State -->
+                <div class="alert alert-danger mt-4" id="errorAlert" style="display: none;">
+                    <h5 class="alert-heading">❌ Generation Failed</h5>
+                    <p id="errorMessage"></p>
+                </div>
+
+                <!-- Success State -->
+                <div class="mt-4" id="resultContainer" style="display: none;">
+                    <div class="card">
+                        <div class="card-header bg-success text-white">
+                            <h5 class="mb-0">✅ Example Generated Successfully</h5>
+                        </div>
+                        <div class="card-body">
+                            <!-- Metadata Summary -->
+                            <div class="mb-3">
+                                <h6>Paper Summary:</h6>
+                                <ul class="list-unstyled">
+                                    <li><strong>Title:</strong> <span id="paperTitle">-</span></li>
+                                    <li><strong>Authors:</strong> <span id="paperAuthors">-</span></li>
+                                    <li id="paperDateRow" style="display: none;"><strong>Date:</strong> <span id="paperDate"></span></li>
+                                    <li id="paperVenueRow" style="display: none;"><strong>Venue:</strong> <span id="paperVenue"></span></li>
+                                </ul>
+                            </div>
+
+                            <!-- Download/Copy Actions -->
+                            <div class="mb-3">
+                                <button class="btn btn-outline-primary me-2" onclick="downloadMarkdown()">
+                                    📥 Download Markdown
+                                </button>
+                                <button class="btn btn-outline-secondary" onclick="copyToClipboard()">
+                                    📋 Copy to Clipboard
+                                </button>
+                            </div>
+
+                            <!-- Generated Content -->
+                            <h6>Generated Content:</h6>
+                            <div class="markdown-content" id="generatedContent"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Example Section -->
+<div class="bg-light py-5">
+    <div class="container">
+        <div class="row">
+            <div class="col-lg-10 mx-auto">
+                <h3 class="text-center mb-4">How It Works</h3>
+                <div class="row g-4">
+                    <div class="col-md-4">
+                        <div class="text-center">
+                            <div class="bg-primary text-white rounded-circle d-inline-flex align-items-center justify-content-center" style="width: 60px; height: 60px;">
+                                <span class="h4 mb-0">1</span>
+                            </div>
+                            <h5 class="mt-3">Extract Content</h5>
+                            <p class="text-muted">We fetch and extract text content from your PDF or paper URL.</p>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="text-center">
+                            <div class="bg-primary text-white rounded-circle d-inline-flex align-items-center justify-content-center" style="width: 60px; height: 60px;">
+                                <span class="h4 mb-0">2</span>
+                            </div>
+                            <h5 class="mt-3">Generate Example</h5>
+                            <p class="text-muted">We create a structured example following our tailored format.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let generatedContent = '';
+
+document.getElementById('generateForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    // Get form data
+    const formData = new FormData(this);
+    
+    // Show loading state
+    showLoading();
+    
+    try {
+        const response = await fetch('/generate', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showSuccess(result);
+        } else {
+            showError(result.error, result.suggestion);
+        }
+    } catch (error) {
+        showError('Network error occurred. Please try again.', 'Check your internet connection and try again.');
+    }
+});
+
+function showLoading() {
+    document.querySelector('.button-text').textContent = 'Processing...';
+    document.querySelector('.loading-spinner').style.display = 'inline-block';
+    document.querySelector('button[type="submit"]').disabled = true;
+    
+    document.getElementById('loadingAlert').style.display = 'block';
+    document.getElementById('errorAlert').style.display = 'none';
+    document.getElementById('resultContainer').style.display = 'none';
+    
+    // Simulate progress steps
+    const steps = [
+        'Fetching content from URL...',
+        'Extracting text from PDF...',
+        'Generating structured example...',
+        'Finalizing output...'
+    ];
+    
+    let stepIndex = 0;
+    const stepInterval = setInterval(() => {
+        if (stepIndex < steps.length - 1) {
+            stepIndex++;
+            document.getElementById('loadingStep').textContent = steps[stepIndex];
+        } else {
+            clearInterval(stepInterval);
+        }
+    }, 3000);
+}
+
+function hideLoading() {
+    document.querySelector('.button-text').textContent = '🚀 Generate Example';
+    document.querySelector('.loading-spinner').style.display = 'none';
+    document.querySelector('button[type="submit"]').disabled = false;
+    
+    document.getElementById('loadingAlert').style.display = 'none';
+}
+
+function showError(message, suggestion = '') {
+    hideLoading();
+    
+    document.getElementById('errorMessage').textContent = message;
+    document.getElementById('errorAlert').style.display = 'block';
+    document.getElementById('resultContainer').style.display = 'none';
+}
+
+function showSuccess(result) {
+    hideLoading();
+    
+    // Store the generated content
+    generatedContent = result.generated_content;
+    
+    // Update metadata
+    document.getElementById('paperTitle').textContent = result.metadata.title || 'Unknown';
+    document.getElementById('paperAuthors').textContent = (result.metadata.authors || []).join(', ') || 'Unknown';
+    
+    if (result.metadata.date) {
+        document.getElementById('paperDate').textContent = result.metadata.date;
+        document.getElementById('paperDateRow').style.display = 'block';
+    }
+    
+    if (result.metadata.venue) {
+        document.getElementById('paperVenue').textContent = result.metadata.venue;
+        document.getElementById('paperVenueRow').style.display = 'block';
+    }
+    
+    // Update content
+    document.getElementById('generatedContent').textContent = result.generated_content;
+    
+    // Show result
+    document.getElementById('errorAlert').style.display = 'none';
+    document.getElementById('resultContainer').style.display = 'block';
+    
+    // Scroll to result
+    document.getElementById('resultContainer').scrollIntoView({ behavior: 'smooth' });
+}
+
+function downloadMarkdown() {
+    if (!generatedContent) return;
+    
+    const blob = new Blob([generatedContent], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'generated_example.md';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+async function copyToClipboard() {
+    if (!generatedContent) return;
+    
+    try {
+        await navigator.clipboard.writeText(generatedContent);
+        
+        // Show feedback
+        const button = event.target;
+        const originalText = button.textContent;
+        button.textContent = '✅ Copied!';
+        button.classList.remove('btn-outline-secondary');
+        button.classList.add('btn-success');
+        
+        setTimeout(() => {
+            button.textContent = originalText;
+            button.classList.remove('btn-success');
+            button.classList.add('btn-outline-secondary');
+        }, 2000);
+    } catch (err) {
+        alert('Failed to copy to clipboard');
+    }
+}
+</script>
+{% endblock %}
