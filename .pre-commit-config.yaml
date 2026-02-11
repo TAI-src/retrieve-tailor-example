@@ -1,0 +1,34 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-added-large-files
+        files: ".*"
+      - id: check-case-conflict
+        files: ".*"
+      - id: check-merge-conflict
+        files: ".*"
+      - id: check-yaml
+        files: ".*"
+      - id: end-of-file-fixer
+        files: ".*"
+        types: ["yaml"]
+      - id: check-toml
+        files: ".*"
+        types: ["toml"]
+      - id: debug-statements
+        files: '^src/.*\.py$'
+
+  - repo: https://github.com/macisamuele/language-formatters-pre-commit-hooks
+    rev: v2.15.0
+    hooks:
+      - id: pretty-format-toml
+        args: [--autofix, --no-sort]
+        exclude: '^.*uv\.lock$'
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.13.0
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
