@@ -49,6 +49,11 @@ async def generate_from_url_endpoint(
 ):
     """Generate an example from a single URL."""
     import tempfile
+    import os
+
+    # Check for API key
+    if os.environ.get("ANTHROPIC_API_KEY", None) is None:
+        raise HTTPException(status_code=500, detail="No ANTHROPIC_API_KEY was set.")
 
     try:
         agent = AnthropicAgent(model=model)

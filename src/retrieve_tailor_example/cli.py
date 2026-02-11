@@ -1,11 +1,12 @@
 """Unified CLI with subcommands: scrape, convert, classify, generate."""
 
 import time
+import os
+from dotenv import load_dotenv
 from pathlib import Path
 from typing import Annotated
 
 import typer
-from dotenv import load_dotenv
 
 from retrieve_tailor_example.agents.anthropic import AnthropicAgent, DEFAULT_MODEL
 from rich.console import Console
@@ -223,9 +224,14 @@ def generate_from_url(
             "--force",
             help="Generate example even if not classified as real-world application",
         ),
-    ] = False,
+    ] = True,
 ) -> None:
     """Generate an example from a single URL (PDF or paper page) by scraping, classifying, and generating."""
+    load_dotenv()
+
+    if os.environ.get("ANTHROPIC_API_KEY", None) is None:
+        raise RuntimeError("No ANTHROPIC_API_KEY was set.")
+
     agent = AnthropicAgent(model=model)
     scraper = AcroconScraper(url=url)
 
