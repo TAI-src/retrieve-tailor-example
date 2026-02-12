@@ -1,8 +1,6 @@
 """Classification prompts and logic."""
 
 import json
-import time
-from pathlib import Path
 
 from rich.console import Console
 
@@ -64,57 +62,3 @@ def classify_paper(text: str, agent: Agent) -> dict:
         "is_real_world_application": result["is_real_world_application"],
         "reason": result.get("reason", ""),
     }
-
-
-def classify_all_papers(
-    md_dir: str | Path,
-    agent: Agent,
-    output_path: str | Path = "ignore_me/real_world_papers.json",
-    delay: float = 0.2,
-) -> list[dict]:
-    """Classify all papers in md_dir and save results to JSON."""
-    md_dir = Path(md_dir)
-    output_path = Path(output_path)
-    md_files = sorted(md_dir.glob("*.md"))
-
-    console.print(f"Found {len(md_files)} .md files in {md_dir}/\n")
-
-    results: list[dict] = []
-    for i, md_path in enumerate(md_files, 1):
-        try:
-            text = md_path.read_text(encoding="utf-8")
-            with console.status(
-                f"[{i}/{len(md_files)}] Classifying: {md_path.name}..."
-            ):
-                result = classify_paper(text, agent)
-            result["file"] = md_path.name
-            tag = "YES" if result["is_real_world_application"] else "no"
-            console.print(
-                f"[{i}/{len(md_files)}] {md_path.name}: {tag} — {result['reason']}"
-            )
-            results.append(result)
-        except Exception as e:
-            console.print(f"[{i}/{len(md_files)}] {md_path.name}: ERROR: {e}")
-            results.append(
-                {
-                    "file": md_path.name,
-                    "is_real_world_application": False,
-                    "reason": f"error: {e}",
-                }
-            )
-
-        if i < len(md_files):
-            time.sleep(delay)
-
-    output_path.write_text(json.dumps(results, indent=2), encoding="utf-8")
-
-    real_world = [r for r in results if r["is_real_world_application"]]
-    console.print(f"\n{'=' * 60}")
-    console.print(f"Total papers: {len(results)}")
-    console.print(f"Real-world application papers: {len(real_world)}")
-    console.print(f"\nResults saved to {output_path}")
-    console.print("\nReal-world application papers:")
-    for r in real_world:
-        console.print(f"  - {r['file']}: {r['reason']}")
-
-    return results

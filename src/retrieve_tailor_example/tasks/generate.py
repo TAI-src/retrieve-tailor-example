@@ -1,7 +1,5 @@
 """Example generation prompts and logic."""
 
-import json
-import time
 import os
 import re
 from pathlib import Path
@@ -11,7 +9,7 @@ from dotenv import load_dotenv
 
 from retrieve_tailor_example.agent import Agent
 from retrieve_tailor_example.scraper import Scraper
-from retrieve_tailor_example.document import resolve_article_text, fetch_and_extract
+from retrieve_tailor_example.document import fetch_and_extract
 from retrieve_tailor_example.models import Article
 from retrieve_tailor_example.tasks.classify import classify_paper
 
@@ -140,65 +138,6 @@ def generate_example(
         system=SYSTEM_PROMPT,
         max_tokens=4096,
     )
-
-
-console = Console()
-
-
-def generate_all_examples(
-    articles_dir: str | Path,
-    classifications_path: str | Path,
-    md_dir: str | Path,
-    output_dir: str | Path,
-    agent: Agent,
-    delay: float = 1.0,
-) -> list[Path]:
-    """Generate example summaries for all real-world application papers."""
-    classifications_path = Path(classifications_path)
-    articles_dir = Path(articles_dir)
-    md_dir_path = Path(md_dir)
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    classifications = json.loads(classifications_path.read_text(encoding="utf-8"))
-    real_world = [c for c in classifications if c["is_real_world_application"]]
-
-    console.print(f"Found {len(real_world)} real-world application papers.\n")
-
-    generated: list[Path] = []
-    for i, entry in enumerate(real_world, 1):
-        filename = entry["file"]
-        stem = Path(filename).stem
-        output_path = output_dir / filename
-
-        if output_path.exists():
-            console.print(f"[{i}/{len(real_world)}] Skipping (exists): {filename}")
-            generated.append(output_path)
-            continue
-
-        article_path = articles_dir / f"{stem}.json"
-        if not article_path.exists():
-            console.print(f"[{i}/{len(real_world)}] Missing article JSON: {stem}.json")
-            continue
-
-        try:
-            article = Article.load(article_path)
-            text = resolve_article_text(article, md_dir_path)
-            with console.status(f"[{i}/{len(real_world)}] Generating: {filename}..."):
-                result = generate_example(article, text, paper_id=i, agent=agent)
-            output_path.write_text(result, encoding="utf-8")
-            console.print(f"[{i}/{len(real_world)}] Generated: {filename}")
-            generated.append(output_path)
-        except Exception as e:
-            console.print(f"[{i}/{len(real_world)}] ERROR: {filename}: {e}")
-
-        if i < len(real_world):
-            time.sleep(delay)
-
-    console.print(
-        f"\nDone: {len(generated)}/{len(real_world)} examples in {output_dir}/"
-    )
-    return generated
 
 
 def generate_from_url(
