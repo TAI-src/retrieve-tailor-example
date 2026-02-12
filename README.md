@@ -24,7 +24,7 @@ source .venv/bin/activate
 retrieve-tailor-example generate-from-url https://...
 ```
 
-### Using it as a web service
+## Using it as a web service
 
 ```bash
 uv sync

@@ -113,12 +113,6 @@ async def generate_from_url_endpoint(
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 
-@app.get("/about", response_class=HTMLResponse)
-async def about(request: Request):
-    """Serve the about page explaining the tool."""
-    return templates.TemplateResponse("about.html", {"request": request})
-
-
 def main():
     """Entry point for the web application."""
     uvicorn.run(
